@@ -24,10 +24,14 @@
           </p>
         </div>
         <div class="hero-accent">
-          <div class="accent-ring"></div>
+          <img
+            class="club-logo"
+            src="./assets/cutthroat-logo.png"
+            alt="Cutthroat Chess Club logo"
+          />
           <div class="accent-card">
-            <span>Live from Lichess</span>
-            <strong id="heroSummary">Add players and refresh the board.</strong>
+            <span>Cutthroat Chess Club</span>
+            <strong id="heroSummary">Load the team to build this month’s board.</strong>
           </div>
         </div>
       </header>
@@ -40,18 +44,6 @@
           </div>
 
           <form id="trackerForm" class="controls-form">
-            <label class="field">
-              <span>Your Lichess username</span>
-              <input
-                id="primaryUser"
-                name="primaryUser"
-                type="text"
-                autocomplete="off"
-                placeholder="your_handle"
-                required
-              />
-            </label>
-
             <label class="field">
               <span>Lichess team slug</span>
               <input
@@ -94,7 +86,7 @@
           </form>
 
           <div id="statusBanner" class="status-banner" aria-live="polite">
-            Waiting for player names.
+            Waiting for a team slug.
           </div>
 
           <div class="panel-note">
@@ -148,12 +140,12 @@
 
         <section class="panel h2h-panel">
           <div class="section-header">
-            <h2>Your head-to-head</h2>
-            <p>Each card compares you against one team member.</p>
+            <h2>Live rivalries</h2>
+            <p>Each card shows one team matchup found this month.</p>
           </div>
           <div id="h2hCards" class="cards-grid">
             <article class="empty-state-card">
-              Add your username and team slug to generate current-month H2H cards.
+              Add a team slug to generate current-month rivalry cards.
             </article>
           </div>
         </section>

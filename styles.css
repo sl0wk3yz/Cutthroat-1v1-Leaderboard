@@ -103,14 +103,13 @@ h1 {
     var(--panel);
 }
 
-.accent-ring {
+.club-logo {
   position: absolute;
-  inset: 22px auto auto 24px;
-  width: 240px;
-  height: 240px;
-  border-radius: 50%;
-  border: 1px solid rgba(125, 47, 18, 0.18);
-  transform: translate(-18%, -18%);
+  inset: 20px auto auto 22px;
+  width: min(260px, calc(100% - 140px));
+  aspect-ratio: 1;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 30px rgba(31, 29, 26, 0.18));
 }
 
 .accent-card {
@@ -351,6 +350,13 @@ th {
   font-family: "Instrument Serif", serif;
   font-size: 2.4rem;
   letter-spacing: -0.04em;
+}
+
+.versus-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
 }
 
 .stat-strip {

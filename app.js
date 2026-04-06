@@ -2,7 +2,6 @@ const STORAGE_KEY = "cutthroat-tracker-settings-v2";
 
 const elements = {
   form: document.querySelector("#trackerForm"),
-  primaryUser: document.querySelector("#primaryUser"),
   teamId: document.querySelector("#teamId"),
   perfType: document.querySelector("#perfType"),
   ratedOnly: document.querySelector("#ratedOnly"),
@@ -19,7 +18,6 @@ const elements = {
 };
 
 const demoState = {
-  primaryUser: "magnuscarlsen",
   teamId: "cutthroat-chess-club",
   perfType: "blitz",
   ratedOnly: true,
@@ -46,11 +44,6 @@ async function handleRefresh(event) {
   event.preventDefault();
 
   const config = readForm();
-  if (!config.primaryUser) {
-    setStatus("Add your Lichess username first.");
-    return;
-  }
-
   if (!config.teamId) {
     setStatus("Add a Lichess team slug first.");
     return;
@@ -61,10 +54,10 @@ async function handleRefresh(event) {
 
   try {
     const result = await buildTrackerData(config);
-    renderTracker(result, config.primaryUser);
+    renderTracker(result);
     const perfLabel = config.perfType || "all perf types";
     setStatus(
-      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} across ${result.matchupCount} matchups using ${perfLabel}.`
+      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} across ${result.activeMatchupCount} active matchups using ${perfLabel}.`
     );
   } catch (error) {
     console.error(error);
@@ -102,16 +95,16 @@ async function buildTrackerData(config) {
   return payload;
 }
 
-function renderTracker(result, primaryUser) {
+function renderTracker(result) {
   elements.totalPlayers.textContent = String(result.players.length);
-  elements.trackedMatchups.textContent = String(result.matchupCount);
+  elements.trackedMatchups.textContent = String(result.activeMatchupCount);
   elements.gamesCounted.textContent = String(result.games.length);
-  elements.heroSummary.textContent = `${primaryUser} is being compared against ${result.players.length - 1} team members for ${formatMonthLabel(
+  elements.heroSummary.textContent = `${result.players.length} players loaded for ${formatMonthLabel(
     result.monthStart
-  )}.`;
+  )}, with ${result.activeMatchupCount} rivalries found so far.`;
 
   renderLeaderboard(result.leaderboard);
-  renderH2H(result.h2h, primaryUser);
+  renderH2H(result.matchups);
   renderRecentGames(result.games);
 }
 
@@ -140,26 +133,29 @@ function renderLeaderboard(leaderboard) {
     .join("");
 }
 
-function renderH2H(h2hEntries, primaryUser) {
-  if (h2hEntries.length === 0) {
+function renderH2H(matchups) {
+  if (matchups.length === 0) {
     elements.h2hCards.innerHTML =
-      '<article class="empty-state-card">No head-to-head data to show yet.</article>';
+      '<article class="empty-state-card">No team matchups were found for the current month yet.</article>';
     return;
   }
 
-  elements.h2hCards.innerHTML = h2hEntries
+  elements.h2hCards.innerHTML = matchups
+    .slice(0, 24)
     .map(
       (entry) => `
         <article class="h2h-card">
-          <h3>${escapeHtml(primaryUser)} vs ${escapeHtml(entry.opponent)}</h3>
+          <div class="versus-line">
+            <h3>${escapeHtml(entry.playerA)}</h3>
+            <p>vs</p>
+            <h3>${escapeHtml(entry.playerB)}</h3>
+          </div>
           <p>${entry.games} games tracked this month</p>
-          <div class="score-line">${formatScore(entry.score)} - ${formatScore(
-            entry.games - entry.score
-          )}</div>
+          <div class="score-line">${formatScore(entry.scoreA)} - ${formatScore(entry.scoreB)}</div>
           <div class="stat-strip">
-            <span class="stat-pill">${entry.wins} wins</span>
+            <span class="stat-pill">${entry.winsA} wins for ${escapeHtml(entry.playerA)}</span>
             <span class="stat-pill">${entry.draws} draws</span>
-            <span class="stat-pill">${entry.losses} losses</span>
+            <span class="stat-pill">${entry.winsB} wins for ${escapeHtml(entry.playerB)}</span>
           </div>
         </article>
       `
@@ -207,12 +203,11 @@ function renderEmptyState() {
   elements.totalPlayers.textContent = "0";
   elements.trackedMatchups.textContent = "0";
   elements.gamesCounted.textContent = "0";
-  elements.heroSummary.textContent = "Add your username and refresh the board.";
+  elements.heroSummary.textContent = "Load the team to build this month’s board.";
 }
 
 function readForm() {
   return {
-    primaryUser: elements.primaryUser.value.trim(),
     teamId: elements.teamId.value.trim(),
     perfType: elements.perfType.value,
     ratedOnly: elements.ratedOnly.checked,
@@ -228,7 +223,6 @@ function hydrateForm() {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (!saved) {
     populateForm({
-      primaryUser: "",
       teamId: "cutthroat-chess-club",
       perfType: "",
       ratedOnly: true,
@@ -244,7 +238,6 @@ function hydrateForm() {
 }
 
 function populateForm(state) {
-  elements.primaryUser.value = state.primaryUser ?? "";
   elements.teamId.value = state.teamId ?? "cutthroat-chess-club";
   elements.perfType.value = state.perfType ?? "";
   elements.ratedOnly.checked = state.ratedOnly ?? true;
