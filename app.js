@@ -86,10 +86,18 @@ async function buildTrackerData(config) {
     body: JSON.stringify(config),
   });
 
-  const payload = await response.json().catch(() => null);
+  const rawBody = await response.text();
+  const payload = safeJsonParse(rawBody);
 
   if (!response.ok) {
-    throw new Error(payload?.error || "Unable to load leaderboard data.");
+    throw new Error(
+      payload?.error ||
+        `Leaderboard request failed with ${response.status}${rawBody ? `: ${rawBody.slice(0, 180)}` : ""}`
+    );
+  }
+
+  if (!payload) {
+    throw new Error("Leaderboard returned an unexpected response format.");
   }
 
   return payload;
@@ -298,6 +306,14 @@ function toggleLoading(isLoading) {
   elements.refreshButton.disabled = isLoading;
   elements.demoButton.disabled = isLoading;
   elements.refreshButton.textContent = isLoading ? "Refreshing..." : "Refresh leaderboard";
+}
+
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 function escapeHtml(value) {
