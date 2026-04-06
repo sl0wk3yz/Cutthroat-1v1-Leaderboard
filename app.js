@@ -1,9 +1,9 @@
-const STORAGE_KEY = "cutthroat-tracker-settings-v1";
+const STORAGE_KEY = "cutthroat-tracker-settings-v2";
+
 const elements = {
   form: document.querySelector("#trackerForm"),
   primaryUser: document.querySelector("#primaryUser"),
-  friendList: document.querySelector("#friendList"),
-  maxGames: document.querySelector("#maxGames"),
+  teamId: document.querySelector("#teamId"),
   perfType: document.querySelector("#perfType"),
   ratedOnly: document.querySelector("#ratedOnly"),
   refreshButton: document.querySelector("#refreshButton"),
@@ -20,8 +20,7 @@ const elements = {
 
 const demoState = {
   primaryUser: "magnuscarlsen",
-  friends: ["hikaru", "firouzja2003", "drnykterstein"],
-  maxGames: 20,
+  teamId: "cutthroat-chess-club",
   perfType: "blitz",
   ratedOnly: true,
 };
@@ -52,20 +51,20 @@ async function handleRefresh(event) {
     return;
   }
 
-  if (config.friends.length === 0) {
-    setStatus("Add at least one friend to build the rivalry board.");
+  if (!config.teamId) {
+    setStatus("Add a Lichess team slug first.");
     return;
   }
 
   toggleLoading(true);
-  setStatus("Fetching public games from Lichess and calculating standings...");
+  setStatus("Fetching team members and calculating current-month standings...");
 
   try {
     const result = await buildTrackerData(config);
     renderTracker(result, config.primaryUser);
     const perfLabel = config.perfType || "all perf types";
     setStatus(
-      `Loaded ${result.games.length} games across ${result.matchupCount} matchups using ${perfLabel}.`
+      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} across ${result.matchupCount} matchups using ${perfLabel}.`
     );
   } catch (error) {
     console.error(error);
@@ -107,7 +106,9 @@ function renderTracker(result, primaryUser) {
   elements.totalPlayers.textContent = String(result.players.length);
   elements.trackedMatchups.textContent = String(result.matchupCount);
   elements.gamesCounted.textContent = String(result.games.length);
-  elements.heroSummary.textContent = `${primaryUser} is being compared across ${result.players.length - 1} rivalries.`;
+  elements.heroSummary.textContent = `${primaryUser} is being compared against ${result.players.length - 1} team members for ${formatMonthLabel(
+    result.monthStart
+  )}.`;
 
   renderLeaderboard(result.leaderboard);
   renderH2H(result.h2h, primaryUser);
@@ -151,7 +152,7 @@ function renderH2H(h2hEntries, primaryUser) {
       (entry) => `
         <article class="h2h-card">
           <h3>${escapeHtml(primaryUser)} vs ${escapeHtml(entry.opponent)}</h3>
-          <p>${entry.games} games tracked</p>
+          <p>${entry.games} games tracked this month</p>
           <div class="score-line">${formatScore(entry.score)} - ${formatScore(
             entry.games - entry.score
           )}</div>
@@ -206,20 +207,13 @@ function renderEmptyState() {
   elements.totalPlayers.textContent = "0";
   elements.trackedMatchups.textContent = "0";
   elements.gamesCounted.textContent = "0";
-  elements.heroSummary.textContent = "Add players and refresh the board.";
+  elements.heroSummary.textContent = "Add your username and refresh the board.";
 }
 
 function readForm() {
-  const primaryUser = elements.primaryUser.value.trim();
-  const primaryKey = normalizeName(primaryUser);
-  const friends = dedupePlayers(splitLines(elements.friendList.value)).filter(
-    (friend) => normalizeName(friend) !== primaryKey
-  );
-
   return {
-    primaryUser,
-    friends,
-    maxGames: clampNumber(Number(elements.maxGames.value), 1, 300, 100),
+    primaryUser: elements.primaryUser.value.trim(),
+    teamId: elements.teamId.value.trim(),
     perfType: elements.perfType.value,
     ratedOnly: elements.ratedOnly.checked,
   };
@@ -235,8 +229,7 @@ function hydrateForm() {
   if (!saved) {
     populateForm({
       primaryUser: "",
-      friends: [],
-      maxGames: 100,
+      teamId: "cutthroat-chess-club",
       perfType: "",
       ratedOnly: true,
     });
@@ -252,50 +245,21 @@ function hydrateForm() {
 
 function populateForm(state) {
   elements.primaryUser.value = state.primaryUser ?? "";
-  elements.friendList.value = (state.friends ?? []).join("\n");
-  elements.maxGames.value = String(state.maxGames ?? 100);
+  elements.teamId.value = state.teamId ?? "cutthroat-chess-club";
   elements.perfType.value = state.perfType ?? "";
   elements.ratedOnly.checked = state.ratedOnly ?? true;
 }
 
-function dedupePlayers(players) {
-  const seen = new Set();
-  const ordered = [];
-
-  players.forEach((player) => {
-    const clean = player.trim();
-    const key = normalizeName(clean);
-    if (!clean || seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    ordered.push(clean);
-  });
-
-  return ordered;
-}
-
-function normalizeName(value) {
-  return value.trim().toLowerCase();
-}
-
-function splitLines(value) {
-  return value
-    .split(/\r?\n|,/)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
-function clampNumber(value, minimum, maximum, fallback) {
-  if (Number.isNaN(value)) {
-    return fallback;
-  }
-
-  return Math.min(maximum, Math.max(minimum, value));
-}
-
 function formatScore(score) {
   return Number.isInteger(score) ? String(score) : score.toFixed(1);
+}
+
+function formatMonthLabel(monthStart) {
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  }).format(new Date(monthStart));
 }
 
 function setStatus(message) {

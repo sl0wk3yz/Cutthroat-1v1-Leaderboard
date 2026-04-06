@@ -19,8 +19,8 @@
           <p class="eyebrow">Lichess rivalry tracker</p>
           <h1>Track the score. Settle the arguments.</h1>
           <p class="hero-text">
-            Pull public Lichess games for your circle, compute head-to-head
-            records, and rank everyone on one leaderboard.
+            Pull your Lichess team, compute current-month head-to-head records,
+            and rank everyone on one leaderboard.
           </p>
         </div>
         <div class="hero-accent">
@@ -36,7 +36,7 @@
         <section class="panel controls-panel">
           <div class="panel-heading">
             <h2>Players</h2>
-            <p>Choose your account, add friends, then fetch your latest results.</p>
+            <p>Choose your account and team, then fetch this month’s results.</p>
           </div>
 
           <form id="trackerForm" class="controls-form">
@@ -53,28 +53,18 @@
             </label>
 
             <label class="field">
-              <span>Friends</span>
-              <textarea
-                id="friendList"
-                name="friendList"
-                rows="5"
-                placeholder="friend_one&#10;friend_two&#10;friend_three"
-              ></textarea>
+              <span>Lichess team slug</span>
+              <input
+                id="teamId"
+                name="teamId"
+                type="text"
+                autocomplete="off"
+                value="cutthroat-chess-club"
+                required
+              />
             </label>
 
-            <div class="inline-grid">
-              <label class="field">
-                <span>Games per matchup</span>
-                <input
-                  id="maxGames"
-                  name="maxGames"
-                  type="number"
-                  min="1"
-                  max="300"
-                  value="100"
-                />
-              </label>
-
+            <div class="inline-grid inline-grid-single">
               <label class="field">
                 <span>Perf type</span>
                 <select id="perfType" name="perfType">
@@ -108,8 +98,8 @@
           </div>
 
           <div class="panel-note">
-            Uses the public Lichess games export API and saves your setup in this
-            browser with local storage.
+            Uses your Lichess team as the player pool and only counts games from
+            the current month.
           </div>
         </section>
 
@@ -159,11 +149,11 @@
         <section class="panel h2h-panel">
           <div class="section-header">
             <h2>Your head-to-head</h2>
-            <p>Each card compares you against one friend.</p>
+            <p>Each card compares you against one team member.</p>
           </div>
           <div id="h2hCards" class="cards-grid">
             <article class="empty-state-card">
-              Add your username and at least one friend to generate H2H cards.
+              Add your username and team slug to generate current-month H2H cards.
             </article>
           </div>
         </section>

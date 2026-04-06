@@ -205,6 +205,10 @@ h1 {
   grid-template-columns: 1fr 1fr;
 }
 
+.inline-grid-single {
+  grid-template-columns: 1fr;
+}
+
 .checkbox {
   display: flex;
   gap: 10px;
