@@ -30,28 +30,12 @@ async function buildTrackerData(config) {
   const teamMembers = await fetchTeamMembers(config.teamId);
   const players = dedupePlayers(teamMembers);
   const monthRange = getCurrentMonthRangeUtc();
-  const pairings = [];
+  const teamKeys = new Set(players.map(normalizeName));
+  const expectedMatchupCount = (players.length * Math.max(players.length - 1, 0)) / 2;
+  const games = await fetchTeamGames(players, teamKeys, config, monthRange);
+  const matchups = createMatchups(players, games);
 
-  for (let firstIndex = 0; firstIndex < players.length; firstIndex += 1) {
-    for (let secondIndex = firstIndex + 1; secondIndex < players.length; secondIndex += 1) {
-      pairings.push([players[firstIndex], players[secondIndex]]);
-    }
-  }
-
-  const gamesById = new Map();
-  const matchups = [];
-
-  for (const [playerA, playerB] of pairings) {
-    const games = await fetchHeadToHeadGames(playerA, playerB, config, monthRange);
-    if (games.length > 0) {
-      matchups.push(createMatchupSummary(playerA, playerB, games));
-    }
-    games.forEach((game) => gamesById.set(game.id, game));
-  }
-
-  const games = [...gamesById.values()].sort(
-    (left, right) => (right.playedAt ?? 0) - (left.playedAt ?? 0)
-  );
+  games.sort((left, right) => (right.playedAt ?? 0) - (left.playedAt ?? 0));
 
   return {
     players,
@@ -61,7 +45,7 @@ async function buildTrackerData(config) {
       if (right.games !== left.games) return right.games - left.games;
       return (right.latestGameAt ?? 0) - (left.latestGameAt ?? 0);
     }),
-    matchupCount: pairings.length,
+    matchupCount: expectedMatchupCount,
     activeMatchupCount: matchups.length,
     monthStart: monthRange.start,
     monthEnd: monthRange.end,
@@ -69,13 +53,16 @@ async function buildTrackerData(config) {
 }
 
 async function fetchTeamMembers(teamId) {
-  const response = await fetch(`https://lichess.org/api/team/${encodeURIComponent(teamId)}/users`, {
-    headers: {
-      Accept: "application/x-ndjson",
-    },
-  });
+  const response = await fetchWithRetry(
+    `https://lichess.org/api/team/${encodeURIComponent(teamId)}/users`,
+    {
+      headers: {
+        Accept: "application/x-ndjson",
+      },
+    }
+  );
 
-  if (!response.ok) {
+  if (!response || !response.ok) {
     return [];
   }
 
@@ -87,9 +74,35 @@ async function fetchTeamMembers(teamId) {
   return members;
 }
 
-async function fetchHeadToHeadGames(playerA, playerB, config, monthRange) {
-  const url = new URL(encodeURIComponent(playerA), LICHESS_API_ROOT);
-  url.searchParams.set("vs", playerB);
+async function fetchTeamGames(players, teamKeys, config, monthRange) {
+  const gamesById = new Map();
+  const concurrency = 2;
+
+  for (let start = 0; start < players.length; start += concurrency) {
+    const batch = players.slice(start, start + concurrency);
+    const batchResults = await Promise.all(
+      batch.map((player) => fetchPlayerGames(player, config, monthRange))
+    );
+
+    batchResults.forEach((games) => {
+      games.forEach((game) => {
+        const isInternalMatchup =
+          teamKeys.has(game.whiteKey) &&
+          teamKeys.has(game.blackKey) &&
+          game.whiteKey !== game.blackKey;
+
+        if (isInternalMatchup) {
+          gamesById.set(game.id, game);
+        }
+      });
+    });
+  }
+
+  return [...gamesById.values()];
+}
+
+async function fetchPlayerGames(player, config, monthRange) {
+  const url = new URL(encodeURIComponent(player), LICHESS_API_ROOT);
   url.searchParams.set("ongoing", "false");
   url.searchParams.set("finished", "true");
   url.searchParams.set("moves", "false");
@@ -106,13 +119,13 @@ async function fetchHeadToHeadGames(playerA, playerB, config, monthRange) {
     url.searchParams.set("rated", "true");
   }
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: {
       Accept: "application/x-ndjson",
     },
   });
 
-  if (!response.ok) {
+  if (!response || !response.ok) {
     return [];
   }
 
@@ -265,6 +278,54 @@ function createMatchupSummary(playerA, playerB, games) {
   return summary;
 }
 
+function createMatchups(players, games) {
+  const playerNamesByKey = new Map(players.map((player) => [normalizeName(player), player]));
+  const matchups = new Map();
+
+  games.forEach((game) => {
+    const orderedKeys = [game.whiteKey, game.blackKey].sort();
+    const matchupKey = orderedKeys.join(":");
+
+    if (!matchups.has(matchupKey)) {
+      matchups.set(matchupKey, {
+        playerA: playerNamesByKey.get(orderedKeys[0]) ?? orderedKeys[0],
+        playerB: playerNamesByKey.get(orderedKeys[1]) ?? orderedKeys[1],
+        winsA: 0,
+        winsB: 0,
+        draws: 0,
+        games: 0,
+        scoreA: 0,
+        scoreB: 0,
+        latestGameAt: 0,
+      });
+    }
+
+    const summary = matchups.get(matchupKey);
+    summary.games += 1;
+    summary.latestGameAt = Math.max(summary.latestGameAt, game.playedAt ?? 0);
+
+    if (!game.winner) {
+      summary.draws += 1;
+      summary.scoreA += 0.5;
+      summary.scoreB += 0.5;
+      return;
+    }
+
+    if (game.winner === normalizeName(summary.playerA)) {
+      summary.winsA += 1;
+      summary.scoreA += 1;
+      return;
+    }
+
+    if (game.winner === normalizeName(summary.playerB)) {
+      summary.winsB += 1;
+      summary.scoreB += 1;
+    }
+  });
+
+  return [...matchups.values()];
+}
+
 function dedupePlayers(players) {
   const seen = new Set();
   const ordered = [];
@@ -291,6 +352,34 @@ function getCurrentMonthRangeUtc() {
   const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0);
   const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0);
   return { start, end };
+}
+
+async function fetchWithRetry(url, options, attempts = 3) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (attempt === attempts - 1) {
+        return null;
+      }
+      await delay(400 * (attempt + 1));
+    }
+  }
+
+  return null;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function jsonResponse(payload, status) {
