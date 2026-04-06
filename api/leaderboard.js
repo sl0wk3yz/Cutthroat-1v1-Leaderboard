@@ -10,10 +10,6 @@ export default {
       const config = await request.json();
       const cleanedConfig = sanitizeConfig(config);
 
-      if (!cleanedConfig.primaryUser) {
-        return jsonResponse({ error: "Primary user is required." }, 400);
-      }
-
       if (!cleanedConfig.teamId) {
         return jsonResponse({ error: "Team ID is required." }, 400);
       }
@@ -32,7 +28,7 @@ export default {
 
 async function buildTrackerData(config) {
   const teamMembers = await fetchTeamMembers(config.teamId);
-  const players = dedupePlayers([config.primaryUser, ...teamMembers]);
+  const players = dedupePlayers(teamMembers);
   const monthRange = getCurrentMonthRangeUtc();
   const pairings = [];
 
@@ -43,25 +39,30 @@ async function buildTrackerData(config) {
   }
 
   const gamesById = new Map();
+  const matchups = [];
 
   for (const [playerA, playerB] of pairings) {
     const games = await fetchHeadToHeadGames(playerA, playerB, config, monthRange);
+    if (games.length > 0) {
+      matchups.push(createMatchupSummary(playerA, playerB, games));
+    }
     games.forEach((game) => gamesById.set(game.id, game));
   }
 
   const games = [...gamesById.values()].sort(
     (left, right) => (right.playedAt ?? 0) - (left.playedAt ?? 0)
   );
-  const opponents = players.filter(
-    (player) => normalizeName(player) !== normalizeName(config.primaryUser)
-  );
 
   return {
     players,
     games,
     leaderboard: createLeaderboard(players, games),
-    h2h: createHeadToHeadCards(config.primaryUser, opponents, games),
+    matchups: matchups.sort((left, right) => {
+      if (right.games !== left.games) return right.games - left.games;
+      return (right.latestGameAt ?? 0) - (left.latestGameAt ?? 0);
+    }),
     matchupCount: pairings.length,
+    activeMatchupCount: matchups.length,
     monthStart: monthRange.start,
     monthEnd: monthRange.end,
   };
@@ -75,17 +76,13 @@ async function fetchTeamMembers(teamId) {
   });
 
   if (!response.ok) {
-    throw new Error(`Could not load members for team ${teamId} (${response.status}).`);
+    return [];
   }
 
   const text = await response.text();
   const members = parseNdjson(text)
     .map((entry) => entry?.id || entry?.name || entry?.username || entry?.user?.name)
     .filter(Boolean);
-
-  if (members.length === 0) {
-    throw new Error(`Team ${teamId} returned no members.`);
-  }
 
   return members;
 }
@@ -116,7 +113,7 @@ async function fetchHeadToHeadGames(playerA, playerB, config, monthRange) {
   });
 
   if (!response.ok) {
-    throw new Error(`Lichess request failed for ${playerA} vs ${playerB} (${response.status}).`);
+    return [];
   }
 
   const text = await response.text();
@@ -125,7 +122,6 @@ async function fetchHeadToHeadGames(playerA, playerB, config, monthRange) {
 
 function sanitizeConfig(config) {
   return {
-    primaryUser: String(config?.primaryUser ?? "").trim(),
     teamId: String(config?.teamId ?? "").trim(),
     perfType: normalizePerfType(config?.perfType),
     ratedOnly: Boolean(config?.ratedOnly),
@@ -229,47 +225,44 @@ function createLeaderboard(players, games) {
     });
 }
 
-function createHeadToHeadCards(primaryUser, opponents, games) {
-  const primaryKey = normalizeName(primaryUser);
+function createMatchupSummary(playerA, playerB, games) {
+  const playerAKey = normalizeName(playerA);
+  const playerBKey = normalizeName(playerB);
+  const summary = {
+    playerA,
+    playerB,
+    winsA: 0,
+    winsB: 0,
+    draws: 0,
+    games: games.length,
+    scoreA: 0,
+    scoreB: 0,
+    latestGameAt: 0,
+  };
 
-  return opponents.map((friend) => {
-    const friendKey = normalizeName(friend);
-    const entry = {
-      opponent: friend,
-      wins: 0,
-      draws: 0,
-      losses: 0,
-      games: 0,
-      score: 0,
-    };
+  games.forEach((game) => {
+    summary.latestGameAt = Math.max(summary.latestGameAt, game.playedAt ?? 0);
 
-    games.forEach((game) => {
-      const involvesPrimary =
-        (game.whiteKey === primaryKey && game.blackKey === friendKey) ||
-        (game.whiteKey === friendKey && game.blackKey === primaryKey);
+    if (!game.winner) {
+      summary.draws += 1;
+      summary.scoreA += 0.5;
+      summary.scoreB += 0.5;
+      return;
+    }
 
-      if (!involvesPrimary) {
-        return;
-      }
+    if (game.winner === playerAKey) {
+      summary.winsA += 1;
+      summary.scoreA += 1;
+      return;
+    }
 
-      entry.games += 1;
-
-      if (!game.winner) {
-        entry.draws += 1;
-        entry.score += 0.5;
-        return;
-      }
-
-      if (game.winner === primaryKey) {
-        entry.wins += 1;
-        entry.score += 1;
-      } else {
-        entry.losses += 1;
-      }
-    });
-
-    return entry;
+    if (game.winner === playerBKey) {
+      summary.winsB += 1;
+      summary.scoreB += 1;
+    }
   });
+
+  return summary;
 }
 
 function dedupePlayers(players) {
