@@ -14,8 +14,8 @@ export default {
         return jsonResponse({ error: "Primary user is required." }, 400);
       }
 
-      if (cleanedConfig.friends.length === 0) {
-        return jsonResponse({ error: "Add at least one friend." }, 400);
+      if (!cleanedConfig.teamId) {
+        return jsonResponse({ error: "Team ID is required." }, 400);
       }
 
       const result = await buildTrackerData(cleanedConfig);
@@ -31,7 +31,9 @@ export default {
 };
 
 async function buildTrackerData(config) {
-  const players = dedupePlayers([config.primaryUser, ...config.friends]);
+  const teamMembers = await fetchTeamMembers(config.teamId);
+  const players = dedupePlayers([config.primaryUser, ...teamMembers]);
+  const monthRange = getCurrentMonthRangeUtc();
   const pairings = [];
 
   for (let firstIndex = 0; firstIndex < players.length; firstIndex += 1) {
@@ -43,32 +45,61 @@ async function buildTrackerData(config) {
   const gamesById = new Map();
 
   for (const [playerA, playerB] of pairings) {
-    const games = await fetchHeadToHeadGames(playerA, playerB, config);
+    const games = await fetchHeadToHeadGames(playerA, playerB, config, monthRange);
     games.forEach((game) => gamesById.set(game.id, game));
   }
 
   const games = [...gamesById.values()].sort(
     (left, right) => (right.playedAt ?? 0) - (left.playedAt ?? 0)
   );
+  const opponents = players.filter(
+    (player) => normalizeName(player) !== normalizeName(config.primaryUser)
+  );
 
   return {
     players,
     games,
     leaderboard: createLeaderboard(players, games),
-    h2h: createHeadToHeadCards(config.primaryUser, config.friends, games),
+    h2h: createHeadToHeadCards(config.primaryUser, opponents, games),
     matchupCount: pairings.length,
+    monthStart: monthRange.start,
+    monthEnd: monthRange.end,
   };
 }
 
-async function fetchHeadToHeadGames(playerA, playerB, config) {
+async function fetchTeamMembers(teamId) {
+  const response = await fetch(`https://lichess.org/api/team/${encodeURIComponent(teamId)}/users`, {
+    headers: {
+      Accept: "application/x-ndjson",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Could not load members for team ${teamId} (${response.status}).`);
+  }
+
+  const text = await response.text();
+  const members = parseNdjson(text)
+    .map((entry) => entry?.id || entry?.name || entry?.username || entry?.user?.name)
+    .filter(Boolean);
+
+  if (members.length === 0) {
+    throw new Error(`Team ${teamId} returned no members.`);
+  }
+
+  return members;
+}
+
+async function fetchHeadToHeadGames(playerA, playerB, config, monthRange) {
   const url = new URL(encodeURIComponent(playerA), LICHESS_API_ROOT);
   url.searchParams.set("vs", playerB);
-  url.searchParams.set("max", String(config.maxGames));
   url.searchParams.set("ongoing", "false");
   url.searchParams.set("finished", "true");
   url.searchParams.set("moves", "false");
   url.searchParams.set("pgnInJson", "true");
   url.searchParams.set("sort", "dateDesc");
+  url.searchParams.set("since", String(monthRange.start));
+  url.searchParams.set("until", String(monthRange.end - 1));
 
   if (config.perfType) {
     url.searchParams.set("perfType", config.perfType);
@@ -93,16 +124,9 @@ async function fetchHeadToHeadGames(playerA, playerB, config) {
 }
 
 function sanitizeConfig(config) {
-  const primaryUser = String(config?.primaryUser ?? "").trim();
-  const primaryKey = normalizeName(primaryUser);
-  const friendList = Array.isArray(config?.friends) ? config.friends : [];
-
   return {
-    primaryUser,
-    friends: dedupePlayers(
-      friendList.map((value) => String(value ?? "").trim()).filter(Boolean)
-    ).filter((friend) => normalizeName(friend) !== primaryKey),
-    maxGames: clampNumber(Number(config?.maxGames), 1, 300, 100),
+    primaryUser: String(config?.primaryUser ?? "").trim(),
+    teamId: String(config?.teamId ?? "").trim(),
     perfType: normalizePerfType(config?.perfType),
     ratedOnly: Boolean(config?.ratedOnly),
   };
@@ -205,10 +229,10 @@ function createLeaderboard(players, games) {
     });
 }
 
-function createHeadToHeadCards(primaryUser, friends, games) {
+function createHeadToHeadCards(primaryUser, opponents, games) {
   const primaryKey = normalizeName(primaryUser);
 
-  return friends.map((friend) => {
+  return opponents.map((friend) => {
     const friendKey = normalizeName(friend);
     const entry = {
       opponent: friend,
@@ -269,12 +293,11 @@ function normalizeName(value) {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function clampNumber(value, minimum, maximum, fallback) {
-  if (Number.isNaN(value)) {
-    return fallback;
-  }
-
-  return Math.min(maximum, Math.max(minimum, value));
+function getCurrentMonthRangeUtc() {
+  const now = new Date();
+  const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0);
+  const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0);
+  return { start, end };
 }
 
 function jsonResponse(payload, status) {
