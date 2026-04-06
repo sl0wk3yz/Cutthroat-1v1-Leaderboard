@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cutthroat Leaderboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Instrument+Serif:ital@0;1&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Lichess rivalry tracker</p>
+          <h1>Track the score. Settle the arguments.</h1>
+          <p class="hero-text">
+            Pull public Lichess games for your circle, compute head-to-head
+            records, and rank everyone on one leaderboard.
+          </p>
+        </div>
+        <div class="hero-accent">
+          <div class="accent-ring"></div>
+          <div class="accent-card">
+            <span>Live from Lichess</span>
+            <strong id="heroSummary">Add players and refresh the board.</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel controls-panel">
+          <div class="panel-heading">
+            <h2>Players</h2>
+            <p>Choose your account, add friends, then fetch your latest results.</p>
+          </div>
+
+          <form id="trackerForm" class="controls-form">
+            <label class="field">
+              <span>Your Lichess username</span>
+              <input
+                id="primaryUser"
+                name="primaryUser"
+                type="text"
+                autocomplete="off"
+                placeholder="your_handle"
+                required
+              />
+            </label>
+
+            <label class="field">
+              <span>Friends</span>
+              <textarea
+                id="friendList"
+                name="friendList"
+                rows="5"
+                placeholder="friend_one&#10;friend_two&#10;friend_three"
+              ></textarea>
+            </label>
+
+            <div class="inline-grid">
+              <label class="field">
+                <span>Games per matchup</span>
+                <input
+                  id="maxGames"
+                  name="maxGames"
+                  type="number"
+                  min="1"
+                  max="300"
+                  value="100"
+                />
+              </label>
+
+              <label class="field">
+                <span>Perf type</span>
+                <select id="perfType" name="perfType">
+                  <option value="">All rated types</option>
+                  <option value="bullet">Bullet</option>
+                  <option value="blitz">Blitz</option>
+                  <option value="rapid">Rapid</option>
+                  <option value="classical">Classical</option>
+                  <option value="correspondence">Correspondence</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="checkbox">
+              <input id="ratedOnly" name="ratedOnly" type="checkbox" checked />
+              <span>Only include rated games</span>
+            </label>
+
+            <div class="actions">
+              <button id="refreshButton" class="primary-button" type="submit">
+                Refresh leaderboard
+              </button>
+              <button id="demoButton" class="ghost-button" type="button">
+                Load demo setup
+              </button>
+            </div>
+          </form>
+
+          <div id="statusBanner" class="status-banner" aria-live="polite">
+            Waiting for player names.
+          </div>
+
+          <div class="panel-note">
+            Uses the public Lichess games export API and saves your setup in this
+            browser with local storage.
+          </div>
+        </section>
+
+        <section class="panel board-panel">
+          <div class="board-grid">
+            <article class="metric-card">
+              <span>Total players</span>
+              <strong id="totalPlayers">0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Tracked matchups</span>
+              <strong id="trackedMatchups">0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Games counted</span>
+              <strong id="gamesCounted">0</strong>
+            </article>
+          </div>
+
+          <div class="section-header">
+            <h2>Leaderboard</h2>
+            <p>Sorted by score, then win rate, then wins.</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Player</th>
+                  <th>Score</th>
+                  <th>W</th>
+                  <th>D</th>
+                  <th>L</th>
+                  <th>Games</th>
+                  <th>Win rate</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboardBody">
+                <tr class="empty-row">
+                  <td colspan="8">No data yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel h2h-panel">
+          <div class="section-header">
+            <h2>Your head-to-head</h2>
+            <p>Each card compares you against one friend.</p>
+          </div>
+          <div id="h2hCards" class="cards-grid">
+            <article class="empty-state-card">
+              Add your username and at least one friend to generate H2H cards.
+            </article>
+          </div>
+        </section>
+
+        <section class="panel games-panel">
+          <div class="section-header">
+            <h2>Recent games</h2>
+            <p>The latest games used in the calculations.</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>White</th>
+                  <th>Black</th>
+                  <th>Result</th>
+                  <th>Perf</th>
+                  <th>Link</th>
+                </tr>
+              </thead>
+              <tbody id="recentGamesBody">
+                <tr class="empty-row">
+                  <td colspan="6">No games fetched yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
