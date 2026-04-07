@@ -1,4 +1,5 @@
 const STORAGE_KEY = "cutthroat-tracker-settings-v2";
+const MIN_GAMES_TO_DISPLAY = 10;
 
 const elements = {
   form: document.querySelector("#trackerForm"),
@@ -11,6 +12,7 @@ const elements = {
   totalPlayers: document.querySelector("#totalPlayers"),
   trackedMatchups: document.querySelector("#trackedMatchups"),
   gamesCounted: document.querySelector("#gamesCounted"),
+  lastUpdated: document.querySelector("#lastUpdated"),
   heroSummary: document.querySelector("#heroSummary"),
   leaderboardBody: document.querySelector("#leaderboardBody"),
   h2hCards: document.querySelector("#h2hCards"),
@@ -70,13 +72,12 @@ async function handleRefresh(event) {
 }
 
 async function buildTrackerData(config) {
-  const response = await fetch("/api/leaderboard", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(config),
+  const params = new URLSearchParams({
+    teamId: config.teamId,
+    perfType: config.perfType,
+    ratedOnly: String(config.ratedOnly),
   });
+  const response = await fetch(`/api/leaderboard?${params.toString()}`);
 
   const rawBody = await response.text();
   const payload = safeJsonParse(rawBody);
@@ -96,14 +97,19 @@ async function buildTrackerData(config) {
 }
 
 function renderTracker(result) {
-  elements.totalPlayers.textContent = String(result.players.length);
+  const visibleLeaderboard = result.leaderboard.filter(
+    (entry) => entry.games >= MIN_GAMES_TO_DISPLAY
+  );
+
+  elements.totalPlayers.textContent = String(visibleLeaderboard.length);
   elements.trackedMatchups.textContent = String(result.activeMatchupCount);
   elements.gamesCounted.textContent = String(result.games.length);
-  elements.heroSummary.textContent = `${result.players.length} players loaded for ${formatMonthLabel(
+  elements.lastUpdated.textContent = formatLastUpdated(result.generatedAt);
+  elements.heroSummary.textContent = `${visibleLeaderboard.length} players with ${MIN_GAMES_TO_DISPLAY}+ games are shown for ${formatMonthLabel(
     result.monthStart
   )}, with ${result.activeMatchupCount} rivalries found so far.`;
 
-  renderLeaderboard(result.leaderboard);
+  renderLeaderboard(visibleLeaderboard);
   renderH2H(result.matchups);
   renderRecentGames(result.games);
 }
@@ -111,7 +117,7 @@ function renderTracker(result) {
 function renderLeaderboard(leaderboard) {
   if (leaderboard.length === 0) {
     elements.leaderboardBody.innerHTML =
-      '<tr class="empty-row"><td colspan="8">No games matched these settings.</td></tr>';
+      `<tr class="empty-row"><td colspan="8">No players have reached ${MIN_GAMES_TO_DISPLAY} games this month yet.</td></tr>`;
     return;
   }
 
@@ -203,6 +209,7 @@ function renderEmptyState() {
   elements.totalPlayers.textContent = "0";
   elements.trackedMatchups.textContent = "0";
   elements.gamesCounted.textContent = "0";
+  elements.lastUpdated.textContent = "-";
   elements.heroSummary.textContent = "Load the team to build this month’s board.";
 }
 
@@ -253,6 +260,19 @@ function formatMonthLabel(monthStart) {
     month: "long",
     timeZone: "UTC",
   }).format(new Date(monthStart));
+}
+
+function formatLastUpdated(timestamp) {
+  if (!timestamp) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
 }
 
 function setStatus(message) {
