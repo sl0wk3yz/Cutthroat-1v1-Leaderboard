@@ -15,6 +15,20 @@
   --radius-sm: 12px;
 }
 
+body[data-theme="dark"] {
+  --bg: #111213;
+  --panel: rgba(24, 26, 27, 0.82);
+  --panel-strong: #1a1c1d;
+  --ink: #f5ecdf;
+  --muted: #c0b4a6;
+  --line: rgba(239, 220, 192, 0.12);
+  --accent: #c98746;
+  --accent-deep: #f0c18c;
+  --accent-soft: #4a3120;
+  --success: #87c6a0;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -28,6 +42,13 @@ body {
     radial-gradient(circle at top left, rgba(239, 201, 169, 0.85), transparent 30%),
     radial-gradient(circle at top right, rgba(191, 90, 43, 0.18), transparent 18%),
     linear-gradient(180deg, #f3eee4 0%, #efe8db 100%);
+}
+
+body[data-theme="dark"] {
+  background:
+    radial-gradient(circle at top left, rgba(201, 135, 70, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(240, 193, 140, 0.08), transparent 16%),
+    linear-gradient(180deg, #101111 0%, #0b0c0d 100%);
 }
 
 button,
@@ -65,12 +86,64 @@ textarea {
   padding: 34px;
 }
 
+.hero-topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
 .eyebrow {
   margin: 0 0 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   font-size: 0.76rem;
   color: var(--accent-deep);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.theme-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-slider {
+  position: relative;
+  width: 52px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(191, 90, 43, 0.14);
+  transition: background 160ms ease;
+}
+
+.theme-slider::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--panel-strong);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  transition: transform 160ms ease;
+}
+
+.theme-toggle input:checked + .theme-slider {
+  background: rgba(201, 135, 70, 0.3);
+}
+
+.theme-toggle input:checked + .theme-slider::after {
+  transform: translateX(22px);
 }
 
 h1,
@@ -112,6 +185,10 @@ h1 {
   filter: drop-shadow(0 18px 30px rgba(31, 29, 26, 0.18));
 }
 
+body[data-theme="dark"] .club-logo {
+  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.42));
+}
+
 .accent-card {
   position: absolute;
   right: 28px;
@@ -121,6 +198,10 @@ h1 {
   border-radius: 22px;
   background: rgba(31, 29, 26, 0.94);
   color: #fff8ed;
+}
+
+body[data-theme="dark"] .accent-card {
+  background: rgba(8, 8, 8, 0.9);
 }
 
 .accent-card span {
@@ -398,6 +479,11 @@ th {
   .hero-accent,
   .panel {
     padding: 18px;
+  }
+
+  .hero-topline {
+    flex-direction: column;
+    align-items: start;
   }
 
   .board-grid,

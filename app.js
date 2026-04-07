@@ -1,11 +1,13 @@
 const STORAGE_KEY = "cutthroat-tracker-settings-v2";
 const MIN_GAMES_TO_DISPLAY = 10;
+const THEME_KEY = "cutthroat-theme";
 
 const elements = {
   form: document.querySelector("#trackerForm"),
   teamId: document.querySelector("#teamId"),
   perfType: document.querySelector("#perfType"),
   ratedOnly: document.querySelector("#ratedOnly"),
+  themeToggle: document.querySelector("#themeToggle"),
   refreshButton: document.querySelector("#refreshButton"),
   demoButton: document.querySelector("#demoButton"),
   statusBanner: document.querySelector("#statusBanner"),
@@ -25,6 +27,7 @@ const demoState = {
   ratedOnly: true,
 };
 
+hydrateTheme();
 hydrateForm();
 bindEvents();
 renderEmptyState();
@@ -40,6 +43,8 @@ function bindEvents() {
   ["input", "change"].forEach((eventName) => {
     elements.form.addEventListener(eventName, persistForm);
   });
+
+  elements.themeToggle.addEventListener("change", handleThemeToggle);
 }
 
 async function handleRefresh(event) {
@@ -248,6 +253,22 @@ function populateForm(state) {
   elements.teamId.value = state.teamId ?? "cutthroat-chess-club";
   elements.perfType.value = state.perfType ?? "";
   elements.ratedOnly.checked = state.ratedOnly ?? true;
+}
+
+function hydrateTheme() {
+  const savedTheme = localStorage.getItem(THEME_KEY);
+  const prefersDark =
+    savedTheme === "dark" ||
+    (!savedTheme && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+  document.body.dataset.theme = prefersDark ? "dark" : "light";
+  elements.themeToggle.checked = prefersDark;
+}
+
+function handleThemeToggle() {
+  const theme = elements.themeToggle.checked ? "dark" : "light";
+  document.body.dataset.theme = theme;
+  localStorage.setItem(THEME_KEY, theme);
 }
 
 function formatScore(score) {
