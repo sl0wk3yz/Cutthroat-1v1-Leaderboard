@@ -36,7 +36,17 @@ async function buildTrackerData(config) {
   const monthRange = getCurrentMonthRangeUtc();
   const teamKeys = new Set(players.map(normalizeName));
   const expectedMatchupCount = (players.length * Math.max(players.length - 1, 0)) / 2;
-  const games = await fetchTeamGames(players, teamKeys, config, monthRange);
+  let effectivePerfType = config.perfType;
+  let games = await fetchTeamGames(players, teamKeys, config, monthRange);
+  let fallbackUsed = false;
+
+  // Lichess has had recent perfType export inconsistencies, so fall back if a filtered query returns nothing.
+  if (games.length === 0 && config.perfType) {
+    effectivePerfType = "";
+    fallbackUsed = true;
+    games = await fetchTeamGames(players, teamKeys, { ...config, perfType: "" }, monthRange);
+  }
+
   const matchups = createMatchups(players, games);
 
   games.sort((left, right) => (right.playedAt ?? 0) - (left.playedAt ?? 0));
@@ -55,6 +65,8 @@ async function buildTrackerData(config) {
     monthStart: monthRange.start,
     monthEnd: monthRange.end,
     generatedAt: Date.now(),
+    perfTypeApplied: effectivePerfType,
+    fallbackUsed,
   };
 }
 
