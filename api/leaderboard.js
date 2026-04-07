@@ -42,6 +42,7 @@ async function buildTrackerData(config) {
   games.sort((left, right) => (right.playedAt ?? 0) - (left.playedAt ?? 0));
 
   return {
+    teamId: config.teamId,
     players,
     games,
     leaderboard: createLeaderboard(players, games),
