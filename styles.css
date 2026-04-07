@@ -275,6 +275,30 @@ body[data-theme="dark"] .accent-card {
   padding: 12px 14px;
 }
 
+body[data-theme="dark"] .field input,
+body[data-theme="dark"] .field select,
+body[data-theme="dark"] .field textarea {
+  border: 1px solid rgba(240, 193, 140, 0.28);
+  background: rgba(10, 11, 12, 0.88);
+  color: #f5ecdf;
+}
+
+body[data-theme="dark"] .field input::placeholder,
+body[data-theme="dark"] .field textarea::placeholder {
+  color: rgba(192, 180, 166, 0.72);
+}
+
+body[data-theme="dark"] .field input:focus,
+body[data-theme="dark"] .field select:focus,
+body[data-theme="dark"] .field textarea:focus {
+  outline: 2px solid rgba(201, 135, 70, 0.42);
+  outline-offset: 2px;
+}
+
+body[data-theme="dark"] .field span {
+  color: #f0c18c;
+}
+
 .field textarea {
   resize: vertical;
 }
