@@ -2,12 +2,12 @@ const LICHESS_API_ROOT = "https://lichess.org/api/games/user/";
 
 export default {
   async fetch(request) {
-    if (request.method !== "POST") {
-      return jsonResponse({ error: "Use POST for this endpoint." }, 405);
-    }
-
     try {
-      const config = await request.json();
+      if (!["GET", "POST"].includes(request.method)) {
+        return jsonResponse({ error: "Use GET or POST for this endpoint." }, 405);
+      }
+
+      const config = await readConfig(request);
       const cleanedConfig = sanitizeConfig(config);
 
       if (!cleanedConfig.teamId) {
@@ -15,7 +15,11 @@ export default {
       }
 
       const result = await buildTrackerData(cleanedConfig);
-      return jsonResponse(result, 200);
+      return jsonResponse(result, 200, {
+        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=900",
+        "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=900",
+        "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=900",
+      });
     } catch (error) {
       console.error("leaderboard error", error);
       return jsonResponse(
@@ -49,6 +53,7 @@ async function buildTrackerData(config) {
     activeMatchupCount: matchups.length,
     monthStart: monthRange.start,
     monthEnd: monthRange.end,
+    generatedAt: Date.now(),
   };
 }
 
@@ -133,11 +138,28 @@ async function fetchPlayerGames(player, config, monthRange) {
   return parseNdjson(text).map(normalizeGame).filter(Boolean);
 }
 
+async function readConfig(request) {
+  if (request.method === "GET") {
+    const { searchParams } = new URL(request.url);
+    return {
+      teamId: searchParams.get("teamId") ?? "",
+      perfType: searchParams.get("perfType") ?? "",
+      ratedOnly: searchParams.get("ratedOnly") ?? "true",
+    };
+  }
+
+  if (request.method === "POST") {
+    return request.json();
+  }
+
+  throw new Error("Unsupported method.");
+}
+
 function sanitizeConfig(config) {
   return {
     teamId: String(config?.teamId ?? "").trim(),
     perfType: normalizePerfType(config?.perfType),
-    ratedOnly: Boolean(config?.ratedOnly),
+    ratedOnly: parseBoolean(config?.ratedOnly, true),
   };
 }
 
@@ -354,6 +376,20 @@ function getCurrentMonthRangeUtc() {
   return { start, end };
 }
 
+function parseBoolean(value, fallback) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+
+  return fallback;
+}
+
 async function fetchWithRetry(url, options, attempts = 3) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const controller = new AbortController();
@@ -382,12 +418,12 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function jsonResponse(payload, status) {
+function jsonResponse(payload, status, extraHeaders = {}) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
+      ...extraHeaders,
     },
   });
 }
