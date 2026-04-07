@@ -1,6 +1,8 @@
 const STORAGE_KEY = "cutthroat-tracker-settings-v2";
 const MIN_GAMES_TO_DISPLAY = 10;
 const THEME_KEY = "cutthroat-theme";
+let activeRequestId = 0;
+let activeAbortController = null;
 
 const elements = {
   form: document.querySelector("#trackerForm"),
@@ -56,33 +58,51 @@ async function handleRefresh(event) {
     return;
   }
 
+  if (activeAbortController) {
+    activeAbortController.abort();
+  }
+
+  const requestId = activeRequestId + 1;
+  activeRequestId = requestId;
+  activeAbortController = new AbortController();
+
   toggleLoading(true);
-  setStatus("Fetching team members and calculating current-month standings...");
+  setStatus(`Fetching ${config.teamId} and calculating current-month standings...`);
+  renderLoadingState(config.teamId);
 
   try {
-    const result = await buildTrackerData(config);
+    const result = await buildTrackerData(config, activeAbortController.signal);
+    if (requestId !== activeRequestId) {
+      return;
+    }
     renderTracker(result);
     const perfLabel = config.perfType || "all perf types";
     setStatus(
-      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} across ${result.activeMatchupCount} active matchups using ${perfLabel}.`
+      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} for ${result.teamId} across ${result.activeMatchupCount} active matchups using ${perfLabel}.`
     );
   } catch (error) {
+    if (error?.name === "AbortError") {
+      return;
+    }
     console.error(error);
     const message =
       error instanceof Error ? error.message : "Something went wrong while loading games.";
     setStatus(message);
   } finally {
-    toggleLoading(false);
+    if (requestId === activeRequestId) {
+      activeAbortController = null;
+      toggleLoading(false);
+    }
   }
 }
 
-async function buildTrackerData(config) {
+async function buildTrackerData(config, signal) {
   const params = new URLSearchParams({
     teamId: config.teamId,
     perfType: config.perfType,
     ratedOnly: String(config.ratedOnly),
   });
-  const response = await fetch(`/api/leaderboard?${params.toString()}`);
+  const response = await fetch(`/api/leaderboard?${params.toString()}`, { signal });
 
   const rawBody = await response.text();
   const payload = safeJsonParse(rawBody);
@@ -110,7 +130,7 @@ function renderTracker(result) {
   elements.trackedMatchups.textContent = String(result.activeMatchupCount);
   elements.gamesCounted.textContent = String(result.games.length);
   elements.lastUpdated.textContent = formatLastUpdated(result.generatedAt);
-  elements.heroSummary.textContent = `${visibleLeaderboard.length} players with ${MIN_GAMES_TO_DISPLAY}+ games are shown for ${formatMonthLabel(
+  elements.heroSummary.textContent = `${visibleLeaderboard.length} players with ${MIN_GAMES_TO_DISPLAY}+ games are shown for ${result.teamId} in ${formatMonthLabel(
     result.monthStart
   )}, with ${result.activeMatchupCount} rivalries found so far.`;
 
@@ -216,6 +236,14 @@ function renderEmptyState() {
   elements.gamesCounted.textContent = "0";
   elements.lastUpdated.textContent = "-";
   elements.heroSummary.textContent = "Load the team to build this month’s board.";
+}
+
+function renderLoadingState(teamId) {
+  elements.totalPlayers.textContent = "...";
+  elements.trackedMatchups.textContent = "...";
+  elements.gamesCounted.textContent = "...";
+  elements.lastUpdated.textContent = "...";
+  elements.heroSummary.textContent = `Loading results for ${teamId}...`;
 }
 
 function readForm() {
