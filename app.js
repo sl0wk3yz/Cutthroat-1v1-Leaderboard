@@ -25,7 +25,7 @@ const elements = {
 
 const demoState = {
   teamId: "cutthroat-chess-club",
-  perfType: "blitz",
+  perfType: "",
   ratedOnly: true,
 };
 
@@ -76,9 +76,10 @@ async function handleRefresh(event) {
       return;
     }
     renderTracker(result);
-    const perfLabel = config.perfType || "all perf types";
+    const perfLabel = result.perfTypeApplied || config.perfType || "all rated types";
+    const fallbackNote = result.fallbackUsed ? " after falling back to all rated types" : "";
     setStatus(
-      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} for ${result.teamId} across ${result.activeMatchupCount} active matchups using ${perfLabel}.`
+      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} for ${result.teamId} across ${result.activeMatchupCount} active matchups using ${perfLabel}${fallbackNote}.`
     );
   } catch (error) {
     if (error?.name === "AbortError") {
@@ -285,12 +286,10 @@ function populateForm(state) {
 
 function hydrateTheme() {
   const savedTheme = localStorage.getItem(THEME_KEY);
-  const prefersDark =
-    savedTheme === "dark" ||
-    (!savedTheme && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const useDark = savedTheme === "dark";
 
-  document.body.dataset.theme = prefersDark ? "dark" : "light";
-  elements.themeToggle.checked = prefersDark;
+  document.body.dataset.theme = useDark ? "dark" : "light";
+  elements.themeToggle.checked = useDark;
 }
 
 function handleThemeToggle() {
