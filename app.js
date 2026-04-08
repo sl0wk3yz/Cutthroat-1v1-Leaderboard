@@ -78,9 +78,8 @@ async function handleRefresh(event) {
     renderTracker(result);
     const perfLabel = result.perfTypeApplied || config.perfType || "all rated types";
     const fallbackNote = result.fallbackUsed ? " after falling back to all rated types" : "";
-    const partialNote = result.partial ? " with a partial refresh to avoid timeout" : "";
     setStatus(
-      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} for ${result.teamId} across ${result.activeMatchupCount} active matchups using ${perfLabel}${fallbackNote}${partialNote}.`
+      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} for ${result.teamId} across ${result.activeMatchupCount} active matchups using ${perfLabel}${fallbackNote}.`
     );
   } catch (error) {
     if (error?.name === "AbortError") {
