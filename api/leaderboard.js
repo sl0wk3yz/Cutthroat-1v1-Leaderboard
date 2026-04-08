@@ -1,7 +1,6 @@
 const LICHESS_API_ROOT = "https://lichess.org/api/games/user/";
 const MEMORY_CACHE_TTL_MS = 5 * 60 * 1000;
 const MEMORY_STALE_MS = 15 * 60 * 1000;
-const SOFT_DEADLINE_MS = 8500;
 const memoryCache = new Map();
 
 export default {
@@ -41,21 +40,20 @@ async function buildTrackerData(config) {
     return cached.value;
   }
 
-  const startedAt = Date.now();
   const teamMembers = await fetchTeamMembers(config.teamId);
   const players = dedupePlayers(teamMembers);
   const monthRange = getCurrentMonthRangeUtc();
   const teamKeys = new Set(players.map(normalizeName));
   const expectedMatchupCount = (players.length * Math.max(players.length - 1, 0)) / 2;
   let effectivePerfType = config.perfType;
-  let games = await fetchTeamGames(players, teamKeys, config, monthRange, startedAt);
+  let games = await fetchTeamGames(players, teamKeys, config, monthRange);
   let fallbackUsed = false;
 
   // Lichess has had recent perfType export inconsistencies, so fall back if a filtered query returns nothing.
   if (games.length === 0 && config.perfType) {
     effectivePerfType = "";
     fallbackUsed = true;
-    games = await fetchTeamGames(players, teamKeys, { ...config, perfType: "" }, monthRange, startedAt);
+    games = await fetchTeamGames(players, teamKeys, { ...config, perfType: "" }, monthRange);
   }
 
   const matchups = createMatchups(players, games);
@@ -78,7 +76,6 @@ async function buildTrackerData(config) {
     generatedAt: Date.now(),
     perfTypeApplied: effectivePerfType,
     fallbackUsed,
-    partial: Date.now() - startedAt >= SOFT_DEADLINE_MS,
   };
 
   writeCache(cacheKey, result);
@@ -107,15 +104,11 @@ async function fetchTeamMembers(teamId) {
   return members;
 }
 
-async function fetchTeamGames(players, teamKeys, config, monthRange, startedAt) {
+async function fetchTeamGames(players, teamKeys, config, monthRange) {
   const gamesById = new Map();
   const concurrency = 6;
 
   for (let start = 0; start < players.length; start += concurrency) {
-    if (Date.now() - startedAt >= SOFT_DEADLINE_MS) {
-      break;
-    }
-
     const batch = players.slice(start, start + concurrency);
     const batchResults = await Promise.all(
       batch.map((player) => fetchPlayerGames(player, config, monthRange))
