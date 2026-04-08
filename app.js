@@ -1,8 +1,6 @@
 const STORAGE_KEY = "cutthroat-tracker-settings-v2";
 const MIN_GAMES_TO_DISPLAY = 10;
 const THEME_KEY = "cutthroat-theme";
-let activeRequestId = 0;
-let activeAbortController = null;
 
 const elements = {
   form: document.querySelector("#trackerForm"),
@@ -25,7 +23,7 @@ const elements = {
 
 const demoState = {
   teamId: "cutthroat-chess-club",
-  perfType: "",
+  perfType: "blitz",
   ratedOnly: true,
 };
 
@@ -58,52 +56,33 @@ async function handleRefresh(event) {
     return;
   }
 
-  if (activeAbortController) {
-    activeAbortController.abort();
-  }
-
-  const requestId = activeRequestId + 1;
-  activeRequestId = requestId;
-  activeAbortController = new AbortController();
-
   toggleLoading(true);
-  setStatus(`Fetching ${config.teamId} and calculating current-month standings...`);
-  renderLoadingState(config.teamId);
+  setStatus("Fetching team members and calculating current-month standings...");
 
   try {
-    const result = await buildTrackerData(config, activeAbortController.signal);
-    if (requestId !== activeRequestId) {
-      return;
-    }
+    const result = await buildTrackerData(config);
     renderTracker(result);
-    const perfLabel = result.perfTypeApplied || config.perfType || "all rated types";
-    const fallbackNote = result.fallbackUsed ? " after falling back to all rated types" : "";
+    const perfLabel = config.perfType || "all perf types";
     setStatus(
-      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} for ${result.teamId} across ${result.activeMatchupCount} active matchups using ${perfLabel}${fallbackNote}.`
+      `Loaded ${result.games.length} games from ${formatMonthLabel(result.monthStart)} across ${result.activeMatchupCount} active matchups using ${perfLabel}.`
     );
   } catch (error) {
-    if (error?.name === "AbortError") {
-      return;
-    }
     console.error(error);
     const message =
       error instanceof Error ? error.message : "Something went wrong while loading games.";
     setStatus(message);
   } finally {
-    if (requestId === activeRequestId) {
-      activeAbortController = null;
-      toggleLoading(false);
-    }
+    toggleLoading(false);
   }
 }
 
-async function buildTrackerData(config, signal) {
+async function buildTrackerData(config) {
   const params = new URLSearchParams({
     teamId: config.teamId,
     perfType: config.perfType,
     ratedOnly: String(config.ratedOnly),
   });
-  const response = await fetch(`/api/leaderboard?${params.toString()}`, { signal });
+  const response = await fetch(`/api/leaderboard?${params.toString()}`);
 
   const rawBody = await response.text();
   const payload = safeJsonParse(rawBody);
@@ -131,7 +110,7 @@ function renderTracker(result) {
   elements.trackedMatchups.textContent = String(result.activeMatchupCount);
   elements.gamesCounted.textContent = String(result.games.length);
   elements.lastUpdated.textContent = formatLastUpdated(result.generatedAt);
-  elements.heroSummary.textContent = `${visibleLeaderboard.length} players with ${MIN_GAMES_TO_DISPLAY}+ games are shown for ${result.teamId} in ${formatMonthLabel(
+  elements.heroSummary.textContent = `${visibleLeaderboard.length} players with ${MIN_GAMES_TO_DISPLAY}+ games are shown for ${formatMonthLabel(
     result.monthStart
   )}, with ${result.activeMatchupCount} rivalries found so far.`;
 
@@ -239,14 +218,6 @@ function renderEmptyState() {
   elements.heroSummary.textContent = "Load the team to build this month’s board.";
 }
 
-function renderLoadingState(teamId) {
-  elements.totalPlayers.textContent = "...";
-  elements.trackedMatchups.textContent = "...";
-  elements.gamesCounted.textContent = "...";
-  elements.lastUpdated.textContent = "...";
-  elements.heroSummary.textContent = `Loading results for ${teamId}...`;
-}
-
 function readForm() {
   return {
     teamId: elements.teamId.value.trim(),
@@ -286,10 +257,12 @@ function populateForm(state) {
 
 function hydrateTheme() {
   const savedTheme = localStorage.getItem(THEME_KEY);
-  const useDark = savedTheme === "dark";
+  const prefersDark =
+    savedTheme === "dark" ||
+    (!savedTheme && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
-  document.body.dataset.theme = useDark ? "dark" : "light";
-  elements.themeToggle.checked = useDark;
+  document.body.dataset.theme = prefersDark ? "dark" : "light";
+  elements.themeToggle.checked = prefersDark;
 }
 
 function handleThemeToggle() {
