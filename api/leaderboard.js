@@ -1,4 +1,8 @@
 const LICHESS_API_ROOT = "https://lichess.org/api/games/user/";
+const MEMORY_CACHE_TTL_MS = 5 * 60 * 1000;
+const MEMORY_STALE_MS = 15 * 60 * 1000;
+const SOFT_DEADLINE_MS = 8500;
+const memoryCache = new Map();
 
 export default {
   async fetch(request) {
@@ -31,27 +35,34 @@ export default {
 };
 
 async function buildTrackerData(config) {
+  const cacheKey = createCacheKey(config);
+  const cached = readCache(cacheKey);
+  if (cached?.fresh) {
+    return cached.value;
+  }
+
+  const startedAt = Date.now();
   const teamMembers = await fetchTeamMembers(config.teamId);
   const players = dedupePlayers(teamMembers);
   const monthRange = getCurrentMonthRangeUtc();
   const teamKeys = new Set(players.map(normalizeName));
   const expectedMatchupCount = (players.length * Math.max(players.length - 1, 0)) / 2;
   let effectivePerfType = config.perfType;
-  let games = await fetchTeamGames(players, teamKeys, config, monthRange);
+  let games = await fetchTeamGames(players, teamKeys, config, monthRange, startedAt);
   let fallbackUsed = false;
 
   // Lichess has had recent perfType export inconsistencies, so fall back if a filtered query returns nothing.
   if (games.length === 0 && config.perfType) {
     effectivePerfType = "";
     fallbackUsed = true;
-    games = await fetchTeamGames(players, teamKeys, { ...config, perfType: "" }, monthRange);
+    games = await fetchTeamGames(players, teamKeys, { ...config, perfType: "" }, monthRange, startedAt);
   }
 
   const matchups = createMatchups(players, games);
 
   games.sort((left, right) => (right.playedAt ?? 0) - (left.playedAt ?? 0));
 
-  return {
+  const result = {
     teamId: config.teamId,
     players,
     games,
@@ -67,7 +78,11 @@ async function buildTrackerData(config) {
     generatedAt: Date.now(),
     perfTypeApplied: effectivePerfType,
     fallbackUsed,
+    partial: Date.now() - startedAt >= SOFT_DEADLINE_MS,
   };
+
+  writeCache(cacheKey, result);
+  return result;
 }
 
 async function fetchTeamMembers(teamId) {
@@ -92,11 +107,15 @@ async function fetchTeamMembers(teamId) {
   return members;
 }
 
-async function fetchTeamGames(players, teamKeys, config, monthRange) {
+async function fetchTeamGames(players, teamKeys, config, monthRange, startedAt) {
   const gamesById = new Map();
-  const concurrency = 2;
+  const concurrency = 6;
 
   for (let start = 0; start < players.length; start += concurrency) {
+    if (Date.now() - startedAt >= SOFT_DEADLINE_MS) {
+      break;
+    }
+
     const batch = players.slice(start, start + concurrency);
     const batchResults = await Promise.all(
       batch.map((player) => fetchPlayerGames(player, config, monthRange))
@@ -380,6 +399,42 @@ function dedupePlayers(players) {
 
 function normalizeName(value) {
   return String(value ?? "").trim().toLowerCase();
+}
+
+function createCacheKey(config) {
+  const monthRange = getCurrentMonthRangeUtc();
+  return JSON.stringify({
+    teamId: normalizeName(config.teamId),
+    perfType: config.perfType || "",
+    ratedOnly: config.ratedOnly,
+    monthStart: monthRange.start,
+  });
+}
+
+function readCache(cacheKey) {
+  const entry = memoryCache.get(cacheKey);
+  if (!entry) {
+    return null;
+  }
+
+  const age = Date.now() - entry.savedAt;
+  if (age <= MEMORY_CACHE_TTL_MS) {
+    return { fresh: true, value: entry.value };
+  }
+
+  if (age <= MEMORY_STALE_MS) {
+    return { fresh: false, value: entry.value };
+  }
+
+  memoryCache.delete(cacheKey);
+  return null;
+}
+
+function writeCache(cacheKey, value) {
+  memoryCache.set(cacheKey, {
+    savedAt: Date.now(),
+    value,
+  });
 }
 
 function getCurrentMonthRangeUtc() {
